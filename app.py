@@ -1,4 +1,5 @@
-# Revisi ke-202507201225-1
+# Revisi ke-202507201225-2
+# - FIX: Bug PDF corrupt karena file dibaca 2x
 # - Tambah kolom Pemotong (nama, npwp/nik, nitku, tanggal, penandatangan)
 
 import streamlit as st
@@ -38,7 +39,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown("## 🧾 Rename PDF Bukti Potong Berdasarkan Format yang ditentukan.")
+st.markdown("## 💾 Rename PDF Bukti Potong Berdasarkan Format yang ditentukan.")
 st.markdown("*By: Reza Fahlevi Lubis BKP @zavibis*")
 
 st.markdown("### 📌 Petunjuk Penggunaan")
@@ -68,13 +69,13 @@ def extract_data_from_pdf(file):
         data["MASA PAJAK"] = extract_safe(text, r"\n\S{9}\s+(\d{2}-\d{4})")
         data["SIFAT PEMOTONGAN"] = extract_safe(text, r"(TIDAK FINAL|FINAL)")
         data["STATUS BUKTI"] = extract_safe(text, r"(NORMAL|PEMBETULAN)")
-        data["NPWP / NIK PIHAK DIPOTONG"] = extract_safe(text, r"A\.1 NPWP / NIK\s*:\s*(\d+)")
-        data["NAMA PIHAK DIPOTONG"] = extract_safe(text, r"A\.2 NAMA\s*:\s*(.+)")
+        data["NPWP / NIK PIHAK DIPOTONG"] = extract_safe(text, r"A\\.1 NPWP / NIK\s*:\s*(\d+)")
+        data["NAMA PIHAK DIPOTONG"] = extract_safe(text, r"A\\.2 NAMA\s*:\s*(.+)")
 
         identitas_block = extract_block(text, "A. IDENTITAS WAJIB PAJAK YANG DIPOTONG DAN/ATAU DIPUNGUT PPh ATAU PENERIMA PENGHASILAN", "B. PEMOTONGAN")
         data["NOMOR IDENTITAS TEMPAT KEGIATAN USAHA"] = extract_safe(identitas_block, r"(\d{15,})")
 
-        data["JENIS PPH"] = extract_safe(text, r"B\.2 Jenis PPh\s*:\s*(Pasal \d+)")
+        data["JENIS PPH"] = extract_safe(text, r"B\\.2 Jenis PPh\s*:\s*(Pasal \d+)")
         data["KODE OBJEK PAJAK"] = extract_safe(text, r"(\d{2}-\d{3}-\d{2})")
         data["OBJEK PAJAK"] = extract_safe(text, r"\d{2}-\d{3}-\d{2}\s+([A-Za-z ]+)")
         data["DPP"] = extract_safe(text, r"(\d{1,3}(\.\d{3})*)\s+\d{1,2}\s+(\d{1,3}(\.\d{3})*)", 1)
@@ -85,11 +86,11 @@ def extract_data_from_pdf(file):
         data["NOMOR DOKUMEN"] = extract_safe(text, r"Nomor Dokumen\s*:\s*(.+)")
 
         pemotong_block = extract_block(text, "C. IDENTITAS PEMOTONG DAN/ATAU PEMUNGUT PPh", "D. TANDA TANGAN")
-        data["NPWP / NIK PEMOTONG"] = extract_safe(pemotong_block, r"C\.1 NPWP / NIK\s*:\s*(\d+)")
-        data["NAMA PEMOTONG"] = extract_safe(pemotong_block, r"C\.3.*?:\s*(.+)")
+        data["NPWP / NIK PEMOTONG"] = extract_safe(pemotong_block, r"C\\.1 NPWP / NIK\s*:\s*(\d+)")
+        data["NAMA PEMOTONG"] = extract_safe(pemotong_block, r"C\\.3.*?:\s*(.+)")
         data["NITKU PEMOTONG"] = extract_safe(pemotong_block, r"(\d{15,})")
-        data["TANGGAL PEMOTONGAN"] = extract_safe(pemotong_block, r"C\.4 TANGGAL\s*:\s*(\d{2} .+ \d{4})")
-        data["PENANDATANGAN PEMOTONG"] = extract_safe(pemotong_block, r"C\.5 NAMA PENANDATANGAN\s*:\s*(.+)")
+        data["TANGGAL PEMOTONGAN"] = extract_safe(pemotong_block, r"C\\.4 TANGGAL\s*:\s*(\d{2} .+ \d{4})")
+        data["PENANDATANGAN PEMOTONG"] = extract_safe(pemotong_block, r"C\\.5 NAMA PENANDATANGAN\s*:\s*(.+)")
 
         return data
     except Exception as e:
@@ -108,11 +109,12 @@ uploaded_files = st.file_uploader("📎 Upload PDF Bukti Potong", type=["pdf"], 
 if uploaded_files:
     data_rows = []
     for uploaded_file in uploaded_files:
+        file_bytes = uploaded_file.read()
         with st.spinner(f"📄 Membaca {uploaded_file.name}..."):
-            raw_data = extract_data_from_pdf(uploaded_file)
+            raw_data = extract_data_from_pdf(BytesIO(file_bytes))
             if raw_data:
                 raw_data["OriginalName"] = uploaded_file.name
-                raw_data["FileBytes"] = uploaded_file.read()
+                raw_data["FileBytes"] = file_bytes
                 data_rows.append(raw_data)
 
     if data_rows:
