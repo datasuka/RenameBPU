@@ -1,12 +1,11 @@
-
-# Revisi ke-202507201201-2
+# Revisi ke-202507201225-1
 # - Tambah kolom Pemotong (nama, npwp/nik, nitku, tanggal, penandatangan)
 
 import streamlit as st
 import pdfplumber
 import pandas as pd
 import re
-from io import BytesIO, StringIO
+from io import BytesIO
 import zipfile
 
 st.set_page_config(page_title="Rename Bukti Potong Unifikasi", layout="centered")
@@ -37,7 +36,7 @@ st.markdown("""
         color: white;
     }
 </style>
-"", unsafe_allow_html=True)
+""", unsafe_allow_html=True)
 
 st.markdown("## 🧾 Rename PDF Bukti Potong Berdasarkan Format yang ditentukan.")
 st.markdown("*By: Reza Fahlevi Lubis BKP @zavibis*")
@@ -85,7 +84,6 @@ def extract_data_from_pdf(file):
         data["TANGGAL DOKUMEN"] = extract_safe(text, r"Tanggal\s*:\s*(\d{2} .+ \d{4})")
         data["NOMOR DOKUMEN"] = extract_safe(text, r"Nomor Dokumen\s*:\s*(.+)")
 
-        # Pemotong block
         pemotong_block = extract_block(text, "C. IDENTITAS PEMOTONG DAN/ATAU PEMUNGUT PPh", "D. TANDA TANGAN")
         data["NPWP / NIK PEMOTONG"] = extract_safe(pemotong_block, r"C\.1 NPWP / NIK\s*:\s*(\d+)")
         data["NAMA PEMOTONG"] = extract_safe(pemotong_block, r"C\.3.*?:\s*(.+)")
