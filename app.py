@@ -1,3 +1,7 @@
+# Revisi ke-202507191810-1
+# Rename PDF Bukti Potong Unifikasi Berdasarkan Metadata
+# Tanpa ekspor Excel – hanya rename + UI urut kolom
+
 import streamlit as st
 import pdfplumber
 import pandas as pd
@@ -5,7 +9,7 @@ import re
 from io import BytesIO
 import zipfile
 
-st.set_page_config(page_title="Rename Bukti Potong Unifikasi", layout="centered")
+st.set_page_config(page_title="Rename Bukti Potong", layout="centered")
 
 st.markdown("""
 <style>
@@ -28,21 +32,18 @@ st.markdown("""
         border-radius: 8px;
         padding: 0.5em 1em;
     }
-    .stFileUploader {
-        background-color: #161b22;
-        color: white;
-    }
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown("## 📑 Rename Bukti Potong PPh Unifikasi Berdasarkan Metadata")
+st.markdown("## 📄 Rename PDF Bukti Potong Unifikasi Berdasarkan Metadata")
 st.markdown("*By: Reza Fahlevi Lubis BKP @zavibis*")
 
 st.markdown("### 📌 Petunjuk Penggunaan")
 st.markdown("""
-1. **Upload** satu atau beberapa file PDF Bukti Potong.
-2. Aplikasi otomatis membaca metadata dari PDF.
-3. Klik **Rename PDF & Download** untuk unduh ZIP berisi file PDF yang sudah dinamai ulang.
+1. Upload satu atau beberapa file PDF Bukti Potong.
+2. Aplikasi akan membaca metadata dari isi PDF.
+3. Pilih dan urutkan kolom metadata untuk dijadikan nama file.
+4. Klik tombol untuk rename dan download hasil dalam 1 file ZIP.
 """)
 
 def extract_safe(text, pattern, group=1, default=""):
@@ -63,46 +64,71 @@ def smart_extract_dpp_tarif_pph(text):
                     continue
     return 0, 0, 0
 
-def extract_data_from_pdf(file):
-    with pdfplumber.open(file) as pdf:
+def extract_data_from_pdf(file_stream):
+    with pdfplumber.open(file_stream) as pdf:
         text = "\n".join(page.extract_text() for page in pdf.pages if page.extract_text())
 
-    try:
-        data = {}
-        data["NomorDokumen"] = extract_safe(text, r"Nomor Dokumen\s*:\s*(.+)")
-        data["Nama"] = extract_safe(text, r"A\.2 NAMA\s*:\s*(.+)")
-        data["NPWP"] = extract_safe(text, r"A\.1 NPWP / NIK\s*:\s*(\d+)")
-        data["TanggalDokumen"] = extract_safe(text, r"Tanggal\s*:\s*(\d{2} .+ \d{4})")
-        return data
-    except:
-        return None
+    data = {
+        "NOMOR": extract_safe(text, r"\n(\S{9})\s+\d{2}-\d{4}"),
+        "MASA": extract_safe(text, r"\n\S{9}\s+(\d{2}-\d{4})"),
+        "SIFAT": extract_safe(text, r"(TIDAK FINAL|FINAL)"),
+        "STATUS": extract_safe(text, r"(NORMAL|PEMBETULAN)"),
+        "NPWP": extract_safe(text, r"A\.1 NPWP / NIK\s*:\s*(\d+)"),
+        "NAMA": extract_safe(text, r"A\.2 NAMA\s*:\s*(.+)"),
+        "JENIS_PPH": extract_safe(text, r"B\.2 Jenis PPh\s*:\s*(Pasal \d+)"),
+        "OBJEK": extract_safe(text, r"(\d{2}-\d{3}-\d{2})"),
+        "DOKUMEN": extract_safe(text, r"Nomor Dokumen\s*:\s*(.+)"),
+    }
+    return data
 
 def sanitize_filename(text):
-    return re.sub(r'[\\/*?:"<>|]', "_", str(text))
+    return re.sub(r'[\\/*?:"<>|]', "_", str(text).strip())
 
-def generate_filename(data):
-    parts = ["Bukti Potong"]
-    for k in ["TanggalDokumen", "Nama", "NPWP", "NomorDokumen"]:
-        parts.append(sanitize_filename(data.get(k, "-")))
-    return "_".join(parts) + ".pdf"
+def generate_filename(row, selected_cols):
+    parts = [sanitize_filename(row[col]) for col in selected_cols]
+    return "Bukti Potong " + "_".join(parts) + ".pdf"
 
-uploaded_files = st.file_uploader("📎 Upload PDF Bukti Potong", type=["pdf"], accept_multiple_files=True)
+uploaded_files = st.file_uploader("📎 Upload Bukti Potong (PDF)", type=["pdf"], accept_multiple_files=True)
 
 if uploaded_files:
     data_rows = []
     for file in uploaded_files:
-        result = extract_data_from_pdf(file)
-        if result:
-            result["original_name"] = file.name
-            result["file_bytes"] = file.read()
-            data_rows.append(result)
+        file_bytes = file.read()
+        file_stream = BytesIO(file_bytes)
+        try:
+            data = extract_data_from_pdf(file_stream)
+            data["OriginalName"] = file.name
+            data["FileBytes"] = file_bytes
+            data_rows.append(data)
+        except:
+            st.warning(f"Gagal membaca {file.name}")
 
     if data_rows:
-        zip_buffer = BytesIO()
-        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
-            for row in data_rows:
-                new_name = generate_filename(row)
-                zipf.writestr(new_name, row["file_bytes"])
-        zip_buffer.seek(0)
-        st.success("✅ Rename selesai. Klik tombol di bawah untuk mengunduh.")
-        st.download_button("📦 Download ZIP Bukti Potong", zip_buffer, file_name="bupot_renamed.zip", mime="application/zip")
+        df = pd.DataFrame(data_rows).drop(columns=["FileBytes", "OriginalName"])
+        column_options = df.columns.tolist()
+
+        st.markdown("### ✏️ Pilih Kolom dan Urutkan Format Nama File")
+        initial_df = pd.DataFrame({"Kolom": column_options})
+        selected_rows = st.data_editor(
+            initial_df,
+            use_container_width=True,
+            num_rows="dynamic",
+            column_order=["Kolom"],
+            column_config={
+                "Kolom": st.column_config.SelectboxColumn(
+                    "Pilih Kolom", options=column_options
+                )
+            },
+            hide_index=True
+        )
+        selected_columns = selected_rows["Kolom"].dropna().tolist()
+
+        if st.button("🔁 Rename PDF & Download"):
+            zip_buffer = BytesIO()
+            with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
+                for i, row in df.iterrows():
+                    filename = generate_filename(row, selected_columns)
+                    zipf.writestr(filename, data_rows[i]["FileBytes"])
+            zip_buffer.seek(0)
+            st.success("✅ Berhasil! Klik tombol di bawah ini untuk mengunduh ZIP.")
+            st.download_button("📦 Download ZIP Hasil Rename", zip_buffer, file_name="bukti_potong_renamed.zip", mime="application/zip")
