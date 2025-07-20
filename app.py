@@ -1,8 +1,3 @@
-# Revisi Rename Bukti Potong Unifikasi v1
-# - Rename PDF berdasarkan metadata
-# - Tanpa export ke Excel
-# - Siap deploy ke Streamlit & GitHub
-
 import streamlit as st
 import pdfplumber
 import pandas as pd
@@ -33,18 +28,21 @@ st.markdown("""
         border-radius: 8px;
         padding: 0.5em 1em;
     }
+    .stFileUploader {
+        background-color: #161b22;
+        color: white;
+    }
 </style>
 """, unsafe_allow_html=True)
 
-st.title("📑 Rename PDF Bukti Potong Unifikasi")
+st.markdown("## 📑 Rename Bukti Potong PPh Unifikasi Berdasarkan Metadata")
 st.markdown("*By: Reza Fahlevi Lubis BKP @zavibis*")
 
-st.markdown("### 📌 Petunjuk")
+st.markdown("### 📌 Petunjuk Penggunaan")
 st.markdown("""
-1. Upload satu atau beberapa file PDF Bukti Potong Unifikasi.
-2. Aplikasi akan membaca metadata dari setiap file.
-3. Pilih dan urutkan kolom untuk format nama file.
-4. Klik tombol Rename untuk unduh file hasil rename.
+1. **Upload** satu atau beberapa file PDF Bukti Potong.
+2. Aplikasi otomatis membaca metadata dari PDF.
+3. Klik **Rename PDF & Download** untuk unduh ZIP berisi file PDF yang sudah dinamai ulang.
 """)
 
 def extract_safe(text, pattern, group=1, default=""):
@@ -71,57 +69,40 @@ def extract_data_from_pdf(file):
 
     try:
         data = {}
-        data["NOMOR"] = extract_safe(text, r"\n(\S{9})\s+\d{2}-\d{4}")
-        data["MASA PAJAK"] = extract_safe(text, r"\n\S{9}\s+(\d{2}-\d{4})")
-        data["SIFAT PEMOTONGAN"] = extract_safe(text, r"(TIDAK FINAL|FINAL)")
-        data["STATUS BUKTI"] = extract_safe(text, r"(NORMAL|PEMBETULAN)")
-        data["NPWP / NIK"] = extract_safe(text, r"A\.1 NPWP / NIK\s*:\s*(\d+)")
-        data["NAMA"] = extract_safe(text, r"A\.2 NAMA\s*:\s*(.+)")
-        data["NOMOR IDENTITAS TEMPAT USAHA"] = extract_safe(text, r"A\.3 NOMOR IDENTITAS.*?:\s*(\d+)")
-        data["JENIS PPH"] = extract_safe(text, r"B\.2 Jenis PPh\s*:\s*(Pasal \d+)")
-        data["KODE OBJEK"] = extract_safe(text, r"(\d{2}-\d{3}-\d{2})")
-        data["OBJEK PAJAK"] = extract_safe(text, r"\d{2}-\d{3}-\d{2}\s+([A-Za-z ]+)")
-        data["DPP"], data["TARIF %"], data["PAJAK PENGHASILAN"] = smart_extract_dpp_tarif_pph(text)
-        data["JENIS DOKUMEN"] = extract_safe(text, r"Jenis Dokumen\s*:\s*(.+)")
-        data["TANGGAL DOKUMEN"] = extract_safe(text, r"Tanggal\s*:\s*(\d{2} .+ \d{4})")
-        data["NOMOR DOKUMEN"] = extract_safe(text, r"Nomor Dokumen\s*:\s*(.+)")
-        data["NPWP / NIK PEMOTONG"] = extract_safe(text, r"C\.1 NPWP / NIK\s*:\s*(\d+)")
-        data["NOMOR IDENTITAS TEMPAT USAHA PEMOTONG"] = extract_safe(text, r"C\.2.*?:\s*(\d+)")
-        data["NAMA PEMOTONG"] = extract_safe(text, r"C\.3.*?:\s*(.+)")
-        data["TANGGAL PEMOTONGAN"] = extract_safe(text, r"C\.4 TANGGAL\s*:\s*(\d{2} .+ \d{4})")
-        data["NAMA PENANDATANGAN"] = extract_safe(text, r"C\.5 NAMA PENANDATANGAN\s*:\s*(.+)")
+        data["NomorDokumen"] = extract_safe(text, r"Nomor Dokumen\s*:\s*(.+)")
+        data["Nama"] = extract_safe(text, r"A\.2 NAMA\s*:\s*(.+)")
+        data["NPWP"] = extract_safe(text, r"A\.1 NPWP / NIK\s*:\s*(\d+)")
+        data["TanggalDokumen"] = extract_safe(text, r"Tanggal\s*:\s*(\d{2} .+ \d{4})")
         return data
-    except Exception as e:
-        st.warning(f"Gagal ekstrak data: {e}")
+    except:
         return None
 
-uploaded_files = st.file_uploader("📎 Upload PDF Bukti Potong Unifikasi", type="pdf", accept_multiple_files=True)
+def sanitize_filename(text):
+    return re.sub(r'[\\/*?:"<>|]', "_", str(text))
+
+def generate_filename(data):
+    parts = ["Bukti Potong"]
+    for k in ["TanggalDokumen", "Nama", "NPWP", "NomorDokumen"]:
+        parts.append(sanitize_filename(data.get(k, "-")))
+    return "_".join(parts) + ".pdf"
+
+uploaded_files = st.file_uploader("📎 Upload PDF Bukti Potong", type=["pdf"], accept_multiple_files=True)
 
 if uploaded_files:
-    all_data = []
+    data_rows = []
     for file in uploaded_files:
         result = extract_data_from_pdf(file)
         if result:
-            result["OriginalName"] = file.name
-            result["FileBytes"] = file.read()
-            all_data.append(result)
+            result["original_name"] = file.name
+            result["file_bytes"] = file.read()
+            data_rows.append(result)
 
-    if all_data:
-        df = pd.DataFrame(all_data).drop(columns=["FileBytes", "OriginalName"])
-        column_options = df.columns.tolist()
-
-        st.markdown("### ✏️ Pilih Kolom untuk Format Nama File")
-        selected_columns = st.multiselect(
-            "Urutan Nama File", column_options, default=[], help="Pilih kolom lalu geser untuk atur urutan"
-        )
-
-        if st.button("🔁 Rename PDF & Download"):
-            zip_buffer = BytesIO()
-            with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
-                for i, row in df.iterrows():
-                    name_parts = [str(row[col]).replace("/", "-") for col in selected_columns]
-                    filename = "Bukti Potong " + "_".join(name_parts) + ".pdf"
-                    zipf.writestr(filename, all_data[i]["FileBytes"])
-            zip_buffer.seek(0)
-            st.success("✅ Berhasil! Unduh file hasil rename:")
-            st.download_button("📦 Download ZIP Bukti Potong", zip_buffer, file_name="bukti_potong_renamed.zip", mime="application/zip")
+    if data_rows:
+        zip_buffer = BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
+            for row in data_rows:
+                new_name = generate_filename(row)
+                zipf.writestr(new_name, row["file_bytes"])
+        zip_buffer.seek(0)
+        st.success("✅ Rename selesai. Klik tombol di bawah untuk mengunduh.")
+        st.download_button("📦 Download ZIP Bukti Potong", zip_buffer, file_name="bupot_renamed.zip", mime="application/zip")
