@@ -1,7 +1,7 @@
 
-# Revisi ke-202507201230-1
-# - Kolom NOMOR diganti "Nomor Bukti Potong"
-# - Tambah kolom Masa, Tahun dari Masa Pajak
+# Revisi ke-202507201230-2
+# - Ganti kolom NOMOR jadi Nomor Bukti Potong
+# - Tambah kolom Masa dan Tahun dari Masa Pajak
 
 import streamlit as st
 import pdfplumber
@@ -38,18 +38,10 @@ st.markdown("""
         color: white;
     }
 </style>
-""", unsafe_allow_html=True)
+"", unsafe_allow_html=True)
 
 st.markdown("## 🧾 Rename PDF Bukti Potong Berdasarkan Format yang ditentukan.")
 st.markdown("*By: Reza Fahlevi Lubis BKP @zavibis*")
-
-st.markdown("### 📌 Petunjuk Penggunaan")
-st.markdown("""
-1. **Upload** satu atau beberapa file PDF Bukti Potong.
-2. Aplikasi akan membaca isi metadata dari setiap PDF.
-3. Pilih dan urutkan **kolom-kolom metadata** untuk dijadikan format nama file PDF.
-4. Klik **Rename PDF & Download** untuk mengunduh file hasil rename dalam 1 file ZIP.
-""")
 
 def extract_safe(text, pattern, group=1, default=""):
     match = re.search(pattern, text)
@@ -67,11 +59,12 @@ def extract_data_from_pdf(file):
     data = {}
     try:
         data["Nomor Bukti Potong"] = extract_safe(text, r"\n(\S{9})\s+\d{2}-\d{4}")
-        data["MASA PAJAK"] = extract_safe(text, r"\n\S{9}\s+(\d{2}-\d{4})")
-        if "-" in data["MASA PAJAK"]:
-            data["Masa"], data["Tahun"] = data["MASA PAJAK"].split("-")
+        masa_pajak = extract_safe(text, r"\n\S{9}\s+(\d{2}-\d{4})")
+        data["MASA PAJAK"] = masa_pajak
+        if "-" in masa_pajak:
+            data["MASA"], data["TAHUN"] = masa_pajak.split("-")
         else:
-            data["Masa"], data["Tahun"] = "", ""
+            data["MASA"], data["TAHUN"] = "", ""
 
         data["SIFAT PEMOTONGAN"] = extract_safe(text, r"(TIDAK FINAL|FINAL)")
         data["STATUS BUKTI"] = extract_safe(text, r"(NORMAL|PEMBETULAN)")
@@ -97,10 +90,8 @@ def extract_data_from_pdf(file):
         data["NITKU PEMOTONG"] = extract_safe(pemotong_block, r"(\d{15,})")
         data["TANGGAL PEMOTONGAN"] = extract_safe(pemotong_block, r"C\.4 TANGGAL\s*:\s*(\d{2} .+ \d{4})")
         data["PENANDATANGAN PEMOTONG"] = extract_safe(pemotong_block, r"C\.5 NAMA PENANDATANGAN\s*:\s*(.+)")
-
         return data
-    except Exception as e:
-        st.warning(f"Gagal ekstrak data: {e}")
+    except:
         return None
 
 def sanitize_filename(text):
@@ -119,7 +110,7 @@ if uploaded_files:
             raw_data = extract_data_from_pdf(uploaded_file)
             if raw_data:
                 raw_data["OriginalName"] = uploaded_file.name
-                raw_data["FileBytes"] = uploaded_file.read()
+                raw_data["FileBytes"] = uploaded_file.getvalue()
                 data_rows.append(raw_data)
 
     if data_rows:
