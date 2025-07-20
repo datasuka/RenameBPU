@@ -1,7 +1,8 @@
-# Revisi ke-202507201230-3
-# - Ganti kolom NOMOR jadi Nomor Bukti Potong
-# - Tambah kolom Masa dan Tahun dari Masa Pajak
-# - Fix PDF corrupt saat zip (pakai .getbuffer())
+
+# Revisi ke-202507201245-1
+# - Ganti Pihak Dipotong → Penerima Penghasilan
+# - Fix nama pemotong dari C.3
+# - Tambah petunjuk penggunaan
 
 import streamlit as st
 import pdfplumber
@@ -43,6 +44,14 @@ st.markdown("""
 st.markdown("## 🧾 Rename PDF Bukti Potong Berdasarkan Format yang ditentukan.")
 st.markdown("*By: Reza Fahlevi Lubis BKP @zavibis*")
 
+st.markdown("### 📌 Petunjuk Penggunaan")
+st.markdown("""
+1. **Upload** satu atau beberapa file PDF Bukti Potong.
+2. Aplikasi akan membaca isi metadata dari setiap PDF.
+3. Pilih dan urutkan **kolom-kolom metadata** untuk dijadikan format nama file PDF.
+4. Klik **Rename PDF & Download** untuk mengunduh file hasil rename dalam 1 file ZIP.
+""")
+
 def extract_safe(text, pattern, group=1, default=""):
     match = re.search(pattern, text)
     return match.group(group).strip() if match else default
@@ -68,8 +77,8 @@ def extract_data_from_pdf(file):
 
         data["SIFAT PEMOTONGAN"] = extract_safe(text, r"(TIDAK FINAL|FINAL)")
         data["STATUS BUKTI"] = extract_safe(text, r"(NORMAL|PEMBETULAN)")
-        data["NPWP / NIK PIHAK DIPOTONG"] = extract_safe(text, r"A\.1 NPWP / NIK\s*:\s*(\d+)")
-        data["NAMA PIHAK DIPOTONG"] = extract_safe(text, r"A\.2 NAMA\s*:\s*(.+)")
+        data["NPWP / NIK PENERIMA PENGHASILAN"] = extract_safe(text, r"A\.1 NPWP / NIK\s*:\s*(\d+)")
+        data["NAMA PENERIMA PENGHASILAN"] = extract_safe(text, r"A\.2 NAMA\s*:\s*(.+)")
 
         identitas_block = extract_block(text, "A. IDENTITAS WAJIB PAJAK YANG DIPOTONG DAN/ATAU DIPUNGUT PPh ATAU PENERIMA PENGHASILAN", "B. PEMOTONGAN")
         data["NOMOR IDENTITAS TEMPAT KEGIATAN USAHA"] = extract_safe(identitas_block, r"(\d{15,})")
@@ -77,17 +86,17 @@ def extract_data_from_pdf(file):
         data["JENIS PPH"] = extract_safe(text, r"B\.2 Jenis PPh\s*:\s*(Pasal \d+)")
         data["KODE OBJEK PAJAK"] = extract_safe(text, r"(\d{2}-\d{3}-\d{2})")
         data["OBJEK PAJAK"] = extract_safe(text, r"\d{2}-\d{3}-\d{2}\s+([A-Za-z ]+)")
-        data["DPP"] = extract_safe(text, r"(\d{1,3}(?:\.\d{3})*)\s+\d{1,2}\s+(\d{1,3}(?:\.\d{3})*)", 1)
-        data["TARIF %"] = extract_safe(text, r"(\d{1,3}(?:\.\d{3})*)\s+(\d{1,2})\s+(\d{1,3}(?:\.\d{3})*)", 2)
-        data["PAJAK PENGHASILAN"] = extract_safe(text, r"(\d{1,3}(?:\.\d{3})*)\s+\d{1,2}\s+(\d{1,3}(?:\.\d{3})*)", 2)
+        data["DPP"] = extract_safe(text, r"(\d{1,3}(\.\d{3})*)\s+\d{1,2}\s+(\d{1,3}(\.\d{3})*)", 1)
+        data["TARIF %"] = extract_safe(text, r"(\d{1,3}(\.\d{3})*)\s+(\d{1,2})\s+(\d{1,3}(\.\d{3})*)", 3)
+        data["PAJAK PENGHASILAN"] = extract_safe(text, r"(\d{1,3}(\.\d{3})*)\s+\d{1,2}\s+(\d{1,3}(\.\d{3})*)", 3)
         data["JENIS DOKUMEN"] = extract_safe(text, r"Jenis Dokumen\s*:\s*(.+)")
         data["TANGGAL DOKUMEN"] = extract_safe(text, r"Tanggal\s*:\s*(\d{2} .+ \d{4})")
         data["NOMOR DOKUMEN"] = extract_safe(text, r"Nomor Dokumen\s*:\s*(.+)")
 
         pemotong_block = extract_block(text, "C. IDENTITAS PEMOTONG DAN/ATAU PEMUNGUT PPh", "D. TANDA TANGAN")
         data["NPWP / NIK PEMOTONG"] = extract_safe(pemotong_block, r"C\.1 NPWP / NIK\s*:\s*(\d+)")
-        data["NAMA PEMOTONG"] = extract_safe(pemotong_block, r"C\.3.*?:\s*(.+)")
         data["NITKU PEMOTONG"] = extract_safe(pemotong_block, r"(\d{15,})")
+        data["NAMA PEMOTONG"] = extract_safe(pemotong_block, r"C\.2.*? - (.+)")
         data["TANGGAL PEMOTONGAN"] = extract_safe(pemotong_block, r"C\.4 TANGGAL\s*:\s*(\d{2} .+ \d{4})")
         data["PENANDATANGAN PEMOTONG"] = extract_safe(pemotong_block, r"C\.5 NAMA PENANDATANGAN\s*:\s*(.+)")
         return data
@@ -110,7 +119,7 @@ if uploaded_files:
             raw_data = extract_data_from_pdf(uploaded_file)
             if raw_data:
                 raw_data["OriginalName"] = uploaded_file.name
-                raw_data["FileBytes"] = uploaded_file.getbuffer()
+                raw_data["FileBytes"] = uploaded_file.getvalue()
                 data_rows.append(raw_data)
 
     if data_rows:
@@ -123,7 +132,7 @@ if uploaded_files:
             with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
                 for i, row in df.iterrows():
                     filename = generate_filename(row, selected_columns)
-                    zipf.writestr(filename, uploaded_files[i].getbuffer())
+                    zipf.writestr(filename, data_rows[i]["FileBytes"])
             zip_buffer.seek(0)
             st.success("✅ Berhasil! Klik tombol di bawah ini untuk mengunduh file ZIP.")
             st.download_button("📦 Download ZIP Bukti Potong", zip_buffer, file_name="bukti_potong_renamed.zip", mime="application/zip")
