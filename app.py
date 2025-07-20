@@ -1,7 +1,5 @@
-# Revisi ke-202507201245-3
-# - Perbaiki ekstraksi Nama Pemotong dari C.3
-# - Ganti label "Pihak Dipotong" jadi "Penerima Penghasilan"
-# - Tambah petunjuk penggunaan
+# Revisi ke-202507201240-1
+# - Perbaiki pembacaan Nama Pemotong (ambil setelah titik dua di C.3)
 
 import streamlit as st
 import pdfplumber
@@ -40,19 +38,19 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown("## 📝 Rename PDF Bukti Potong Berdasarkan Format yang ditentukan.")
+st.markdown("## 🧾 Rename PDF Bukti Potong Berdasarkan Format yang ditentukan.")
 st.markdown("*By: Reza Fahlevi Lubis BKP @zavibis*")
 
 st.markdown("### 📌 Petunjuk Penggunaan")
 st.markdown("""
-1. Upload satu atau beberapa file PDF Bukti Potong Unifikasi.
-2. Aplikasi akan membaca informasi di dalam file secara otomatis.
-3. Pilih kolom metadata yang ingin dijadikan format nama file.
-4. Klik Rename PDF & Download untuk mengunduh hasilnya dalam format ZIP.
+1. Upload satu atau beberapa file PDF Bukti Potong.
+2. Aplikasi akan membaca metadata dari setiap PDF.
+3. Pilih kolom untuk dijadikan format nama file PDF.
+4. Klik Rename PDF & Download untuk mengunduh hasil dalam 1 file ZIP.
 """)
 
 def extract_safe(text, pattern, group=1, default=""):
-    match = re.search(pattern, text, re.DOTALL)
+    match = re.search(pattern, text)
     return match.group(group).strip() if match else default
 
 def extract_block(text, start_marker, end_marker):
@@ -85,21 +83,23 @@ def extract_data_from_pdf(file):
         data["JENIS PPH"] = extract_safe(text, r"B\.2 Jenis PPh\s*:\s*(Pasal \d+)")
         data["KODE OBJEK PAJAK"] = extract_safe(text, r"(\d{2}-\d{3}-\d{2})")
         data["OBJEK PAJAK"] = extract_safe(text, r"\d{2}-\d{3}-\d{2}\s+([A-Za-z ]+)")
-        data["DPP"] = extract_safe(text, r"(\d{1,3}(\.\d{3})*)\s+\d{1,2}\s+(\d{1,3}(\.\d{3})*)", 1)
-        data["TARIF %"] = extract_safe(text, r"(\d{1,3}(\.\d{3})*)\s+(\d{1,2})\s+(\d{1,3}(\.\d{3})*)", 3)
-        data["PAJAK PENGHASILAN"] = extract_safe(text, r"(\d{1,3}(\.\d{3})*)\s+\d{1,2}\s+(\d{1,3}(\.\d{3})*)", 3)
+        data["DPP"] = extract_safe(text, r"(\d{1,3}(?:\.\d{3})*)\s+\d{1,2}\s+(\d{1,3}(?:\.\d{3})*)", 1)
+        data["TARIF %"] = extract_safe(text, r"(\d{1,3}(?:\.\d{3})*)\s+(\d{1,2})\s+(\d{1,3}(?:\.\d{3})*)", 2)
+        data["PAJAK PENGHASILAN"] = extract_safe(text, r"(\d{1,3}(?:\.\d{3})*)\s+\d{1,2}\s+(\d{1,3}(?:\.\d{3})*)", 2)
         data["JENIS DOKUMEN"] = extract_safe(text, r"Jenis Dokumen\s*:\s*(.+)")
         data["TANGGAL DOKUMEN"] = extract_safe(text, r"Tanggal\s*:\s*(\d{2} .+ \d{4})")
         data["NOMOR DOKUMEN"] = extract_safe(text, r"Nomor Dokumen\s*:\s*(.+)")
 
         pemotong_block = extract_block(text, "C. IDENTITAS PEMOTONG DAN/ATAU PEMUNGUT PPh", "D. TANDA TANGAN")
         data["NPWP / NIK PEMOTONG"] = extract_safe(pemotong_block, r"C\.1 NPWP / NIK\s*:\s*(\d+)")
-        data["NITKU PEMOTONG"] = extract_safe(pemotong_block, r"(\d{15,})")
-        data["NAMA PEMOTONG"] = extract_safe(pemotong_block, r"C\.3.*?PPh\s*:\s*(.+)")
+        data["NITKU PEMOTONG"] = extract_safe(pemotong_block, r"C\.2.*?:\s*(\d+)")
+        data["NAMA PEMOTONG"] = extract_safe(pemotong_block, r"C\.3.*?:\s*(.+)")
         data["TANGGAL PEMOTONGAN"] = extract_safe(pemotong_block, r"C\.4 TANGGAL\s*:\s*(\d{2} .+ \d{4})")
         data["PENANDATANGAN PEMOTONG"] = extract_safe(pemotong_block, r"C\.5 NAMA PENANDATANGAN\s*:\s*(.+)")
+
         return data
-    except:
+    except Exception as e:
+        st.warning(f"Gagal ekstrak data: {e}")
         return None
 
 def sanitize_filename(text):
