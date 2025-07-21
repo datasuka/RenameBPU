@@ -1,6 +1,8 @@
-# Revisi ke-202507201240-1
-# - Tambah petunjuk penggunaan
-# - Warna tombol biru DJP (#0070C0)
+
+# Revisi ke-202507211338
+# - Perbaikan bug FileBytes (gunakan .getvalue())
+# - Warna tombol biru DJP, tambah petunjuk penggunaan
+# - Kolom Nama/NIK Penerima Penghasilan dan Nama Pemotong disempurnakan
 
 import streamlit as st
 import pdfplumber
@@ -128,7 +130,7 @@ if uploaded_files:
             raw_data = extract_data_from_pdf(uploaded_file)
             if raw_data:
                 raw_data["OriginalName"] = uploaded_file.name
-                raw_data["FileBytes"] = uploaded_file.read()
+                raw_data["FileBytes"] = uploaded_file.getvalue()
                 data_rows.append(raw_data)
 
     if data_rows:
