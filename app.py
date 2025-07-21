@@ -1,15 +1,12 @@
 
-# Revisi ke-202507211338
-# - Perbaikan bug FileBytes (gunakan .getvalue())
-# - Warna tombol biru DJP, tambah petunjuk penggunaan
-# - Kolom Nama/NIK Penerima Penghasilan dan Nama Pemotong disempurnakan
+# Revisi ke-202507211745-1
+# - Perbaiki FileBytes (gunakan .read() setelah .seek(0))
+# - Tidak dalam ZIP, langsung download satu per satu
 
 import streamlit as st
 import pdfplumber
 import pandas as pd
 import re
-from io import BytesIO
-import zipfile
 
 st.set_page_config(page_title="Rename Bukti Potong Unifikasi", layout="centered")
 
@@ -49,9 +46,8 @@ st.markdown("""
 1. Klik **Browse files** untuk upload satu atau beberapa file **PDF Bukti Potong Unifikasi**.
 2. Aplikasi akan membaca informasi dari setiap PDF (misalnya nama pemotong, masa pajak, dsb).
 3. Pilih kolom mana saja yang ingin digunakan sebagai format penamaan file.
-4. Klik **Rename PDF & Download**.
-5. File hasil rename akan diunduh dalam 1 file **ZIP**.
-""")
+4. Klik tombol download untuk mengunduh PDF satu per satu sesuai nama barunya.
+""") 
 
 def extract_safe(text, pattern, group=1, default=""):
     match = re.search(pattern, text)
@@ -110,8 +106,7 @@ def extract_data_from_pdf(file):
         data["TANGGAL PEMOTONGAN"] = extract_safe(text, r"C\.4 TANGGAL\s*:\s*(\d{2} .+ \d{4})")
         data["PENANDATANGAN PEMOTONG"] = extract_safe(text, r"C\.5 NAMA PENANDATANGAN\s*:\s*(.+)")
         return data
-    except Exception as e:
-        st.warning(f"Gagal ekstrak data: {e}")
+    except:
         return None
 
 def sanitize_filename(text):
@@ -126,11 +121,13 @@ uploaded_files = st.file_uploader("📎 Upload PDF Bukti Potong", type=["pdf"], 
 if uploaded_files:
     data_rows = []
     for uploaded_file in uploaded_files:
+        uploaded_file.seek(0)
+        pdf_bytes = uploaded_file.read()
         with st.spinner(f"📄 Membaca {uploaded_file.name}..."):
-            raw_data = extract_data_from_pdf(uploaded_file)
+            raw_data = extract_data_from_pdf(BytesIO(pdf_bytes))
             if raw_data:
                 raw_data["OriginalName"] = uploaded_file.name
-                raw_data["FileBytes"] = uploaded_file.getvalue()
+                raw_data["FileBytes"] = pdf_bytes
                 data_rows.append(raw_data)
 
     if data_rows:
@@ -138,12 +135,12 @@ if uploaded_files:
         column_options = df.columns.tolist()
         selected_columns = st.multiselect("### ✏️ Pilih Kolom untuk Format Nama File", column_options, default=[], key="formatselector")
 
-        if st.button("🔁 Rename PDF & Download"):
-            zip_buffer = BytesIO()
-            with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
-                for i, row in df.iterrows():
-                    filename = generate_filename(row, selected_columns)
-                    zipf.writestr(filename, data_rows[i]["FileBytes"])
-            zip_buffer.seek(0)
-            st.success("✅ Berhasil! Klik tombol di bawah ini untuk mengunduh file ZIP.")
-            st.download_button("📦 Download ZIP Bukti Potong", zip_buffer, file_name="bukti_potong_renamed.zip", mime="application/zip")
+        for i, row in df.iterrows():
+            if selected_columns:
+                filename = generate_filename(row, selected_columns)
+                st.download_button(
+                    label=f"📥 Download: {filename}",
+                    data=data_rows[i]["FileBytes"],
+                    file_name=filename,
+                    mime="application/pdf"
+                )
